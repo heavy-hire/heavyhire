@@ -82,6 +82,7 @@ model User {
   reviewsReceived Review[]    @relation("ReviewReceived")
   messagesSent  Message[]
   disputesRaised Dispute[]
+  cancelledBookings Booking[] @relation("CancelledBookings")
 }
 
 model OwnerProfile {
@@ -163,6 +164,10 @@ model Booking {
   waiverAcceptedAt DateTime?
   pickupPhotos     String[]      @default([])
   returnPhotos     String[]      @default([])
+  cancelledAt        DateTime?
+  cancelledById      String?
+  cancelledBy        User?     @relation("CancelledBookings", fields: [cancelledById], references: [id])
+  cancellationReason String?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
