@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
     const category = request.nextUrl.searchParams.get("category");
     const mine = request.nextUrl.searchParams.get("owner") === "me";
     const pending = request.nextUrl.searchParams.get("pending") === "true";
+    const all = request.nextUrl.searchParams.get("all") === "true";
 
     if (mine) {
       const user = await getCurrentUser();
@@ -39,6 +40,22 @@ export async function GET(request: NextRequest) {
           owner: { select: { id: true, name: true, email: true } },
         },
         orderBy: { createdAt: "asc" },
+      });
+
+      return NextResponse.json(equipment);
+    }
+
+    if (all) {
+      const user = await getCurrentUser();
+      if (!user || user.role !== "ADMIN") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+
+      const equipment = await prisma.equipment.findMany({
+        include: {
+          owner: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { createdAt: "desc" },
       });
 
       return NextResponse.json(equipment);
