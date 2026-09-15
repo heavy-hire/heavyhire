@@ -77,6 +77,7 @@ export default function EquipmentDetailPage() {
   const [bookingError, setBookingError] = useState("");
   const [bookingSuccess, setBookingSuccess] = useState(false);
   const [activeImage, setActiveImage] = useState(0);
+  const [waiverAccepted, setWaiverAccepted] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -156,6 +157,11 @@ export default function EquipmentDetailPage() {
       return;
     }
 
+    if (!waiverAccepted) {
+      setBookingError("Please accept the liability waiver to book");
+      return;
+    }
+
     setBooking(true);
     setBookingError("");
 
@@ -167,6 +173,7 @@ export default function EquipmentDetailPage() {
           equipmentId: equipment.id,
           startDate: formatLocalDate(range.from),
           endDate: formatLocalDate(range.to),
+          waiverAccepted: true,
         }),
       });
 
@@ -357,9 +364,27 @@ export default function EquipmentDetailPage() {
                       {bookingError}
                     </div>
                   )}
+                  <label className="flex items-start gap-2 mb-3 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={waiverAccepted}
+                      onChange={(e) => setWaiverAccepted(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      I accept responsibility for this equipment during the
+                      rental period and understand HeavyHire is not liable
+                      for damage, injury, or loss arising from its use.
+                    </span>
+                  </label>
                   <button
                     onClick={handleBook}
-                    disabled={booking || !hasValidRange || selectedDays < equipment.minHireDays}
+                    disabled={
+                      booking ||
+                      !hasValidRange ||
+                      selectedDays < equipment.minHireDays ||
+                      !waiverAccepted
+                    }
                     className="block w-full py-3 bg-primary-600 text-white rounded-lg font-semibold text-center hover:bg-primary-700 transition mb-3 disabled:opacity-50"
                   >
                     {booking
