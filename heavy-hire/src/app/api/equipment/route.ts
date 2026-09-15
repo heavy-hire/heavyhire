@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth-utils";
 import { equipmentCreateSchema } from "@/lib/validation";
+import { getListingLimit } from "@/lib/subscription";
 
 export async function GET(request: NextRequest) {
   try {
@@ -95,6 +96,25 @@ export async function POST(request: NextRequest) {
         { error: "Only equipment owners can create listings" },
         { status: 403 }
       );
+    }
+
+    if (user.role === "OWNER") {
+      const [ownerProfile, listingCount] = await Promise.all([
+        prisma.ownerProfile.findUnique({ where: { userId: user.id } }),
+        prisma.equipment.count({ where: { ownerId: user.id } }),
+      ]);
+
+      const tier = ownerProfile?.subscriptionTier ?? "FREE";
+      const limit = getListingLimit(tier);
+
+      if (listingCount >= limit) {
+        return NextResponse.json(
+          {
+            error: `Your ${tier} plan allows up to ${limit} listings. Upgrade your subscription to add more.`,
+          },
+          { status: 403 }
+        );
+      }
     }
 
     const body = await request.json();
