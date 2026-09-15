@@ -372,6 +372,7 @@ function OwnerPanel() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
   const [uploading, setUploading] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const loadData = () => {
     setLoading(true);
@@ -389,6 +390,20 @@ function OwnerPanel() {
   };
 
   useEffect(loadData, []);
+
+  const toggleAvailability = async (item: EquipmentListing) => {
+    setTogglingId(item.id);
+    try {
+      await fetch(`/api/equipment/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isAvailable: !item.isAvailable }),
+      });
+      loadData();
+    } finally {
+      setTogglingId(null);
+    }
+  };
 
   const atLimit = Boolean(
     subscription?.listingLimit !== null &&
@@ -564,9 +579,26 @@ function OwnerPanel() {
                     <p className="text-sm text-gray-600">{item.category.replace("_", " ")} — {item.pricePerDay.toLocaleString()} RWF/day</p>
                   </div>
                 </div>
-                <span className={`text-xs px-2 py-1 rounded ${item.isApproved ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
-                  {item.isApproved ? "Approved" : "Pending approval"}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className={`text-xs px-2 py-1 rounded ${item.isApproved ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
+                    {item.isApproved ? "Approved" : "Pending approval"}
+                  </span>
+                  <button
+                    onClick={() => toggleAvailability(item)}
+                    disabled={togglingId === item.id}
+                    className={`text-xs px-2 py-1 rounded font-semibold disabled:opacity-50 ${
+                      item.isAvailable
+                        ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        : "bg-red-100 text-red-700 hover:bg-red-200"
+                    }`}
+                  >
+                    {togglingId === item.id
+                      ? "Saving..."
+                      : item.isAvailable
+                      ? "Available — Mark Booked"
+                      : "Booked — Mark Available"}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -827,10 +859,273 @@ function PendingVerifications() {
   );
 }
 
+function AdminCreateUser({ onCreated }: { onCreated: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    phone: "",
+    role: "CLIENT",
+  });
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create user");
+      setSuccess(`${form.role === "OWNER" ? "Owner" : "Renter"} account created for ${form.email}.`);
+      setForm({ name: "", email: "", password: "", phone: "", role: "CLIENT" });
+      onCreated();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mb-10">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold">Add Owner or Renter</h2>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="px-4 py-2 bg-primary-600 text-white rounded-lg font-semibold"
+        >
+          {open ? "Cancel" : "+ Add User"}
+        </button>
+      </div>
+
+      {open && (
+        <form onSubmit={submit} className="bg-white rounded-lg shadow p-4 space-y-3 max-w-md">
+          {error && <p className="text-red-600 text-sm">{error}</p>}
+          {success && <p className="text-green-600 text-sm">{success}</p>}
+          <select
+            className="w-full border rounded px-3 py-2"
+            value={form.role}
+            onChange={(e) => setForm({ ...form, role: e.target.value })}
+          >
+            <option value="CLIENT">Renter (Client)</option>
+            <option value="OWNER">Owner</option>
+          </select>
+          <input
+            required
+            placeholder="Full name"
+            className="w-full border rounded px-3 py-2"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+          <input
+            required
+            type="email"
+            placeholder="Email"
+            className="w-full border rounded px-3 py-2"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+          />
+          <input
+            required
+            type="password"
+            minLength={8}
+            placeholder="Temporary password (min 8 characters)"
+            className="w-full border rounded px-3 py-2"
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+          />
+          <input
+            placeholder="Phone (optional)"
+            className="w-full border rounded px-3 py-2"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          />
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full py-2 bg-primary-600 text-white rounded-lg font-semibold disabled:opacity-50"
+          >
+            {saving ? "Creating..." : "Create Account"}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+interface AdminUserRow {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  isVerified: boolean;
+  isActive: boolean;
+}
+
+function AdminAllUsers({ refreshKey }: { refreshKey: number }) {
+  const [users, setUsers] = useState<AdminUserRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    fetch("/api/admin/users?all=true")
+      .then((r) => r.json())
+      .then(setUsers)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [refreshKey]);
+
+  const toggleActive = async (u: AdminUserRow) => {
+    setBusyId(u.id);
+    try {
+      await fetch(`/api/admin/users/${u.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: !u.isActive }),
+      });
+      load();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="mb-10">
+      <h2 className="text-xl font-bold mb-4">All Users ({users.length})</h2>
+      {loading ? (
+        <p className="text-gray-500">Loading users...</p>
+      ) : (
+        <div className="bg-white rounded-lg shadow divide-y divide-gray-100">
+          {users.map((u) => (
+            <div key={u.id} className="p-4 flex justify-between items-center">
+              <div>
+                <p className="font-semibold">
+                  {u.name}{" "}
+                  {!u.isActive && (
+                    <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700 ml-1">
+                      Suspended
+                    </span>
+                  )}
+                </p>
+                <p className="text-sm text-gray-600">
+                  {u.email} · {u.role} · {u.isVerified ? "Verified" : "Not verified"}
+                </p>
+              </div>
+              {u.role !== "ADMIN" && (
+                <button
+                  disabled={busyId === u.id}
+                  onClick={() => toggleActive(u)}
+                  className={`text-xs px-3 py-1 rounded font-semibold disabled:opacity-50 ${
+                    u.isActive
+                      ? "bg-red-100 text-red-700 hover:bg-red-200"
+                      : "bg-green-100 text-green-700 hover:bg-green-200"
+                  }`}
+                >
+                  {u.isActive ? "Suspend" : "Reactivate"}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface AdminEquipmentRow {
+  id: string;
+  title: string;
+  category: string;
+  pricePerDay: number;
+  isApproved: boolean;
+  isAvailable: boolean;
+  owner: { name: string };
+}
+
+function AdminAllEquipment() {
+  const [items, setItems] = useState<AdminEquipmentRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    fetch("/api/equipment?all=true")
+      .then((r) => r.json())
+      .then(setItems)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, []);
+
+  const toggleAvailability = async (item: AdminEquipmentRow) => {
+    setBusyId(item.id);
+    try {
+      await fetch(`/api/equipment/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isAvailable: !item.isAvailable }),
+      });
+      load();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="mb-10">
+      <h2 className="text-xl font-bold mb-4">All Equipment ({items.length})</h2>
+      {loading ? (
+        <p className="text-gray-500">Loading equipment...</p>
+      ) : (
+        <div className="bg-white rounded-lg shadow divide-y divide-gray-100">
+          {items.map((item) => (
+            <div key={item.id} className="p-4 flex justify-between items-center">
+              <div>
+                <p className="font-semibold">{item.title}</p>
+                <p className="text-sm text-gray-600">
+                  {item.category.replace("_", " ")} — {item.pricePerDay.toLocaleString()} RWF/day — by {item.owner.name}
+                  {!item.isApproved && " · Pending approval"}
+                </p>
+              </div>
+              <button
+                disabled={busyId === item.id}
+                onClick={() => toggleAvailability(item)}
+                className={`text-xs px-3 py-1 rounded font-semibold disabled:opacity-50 ${
+                  item.isAvailable
+                    ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    : "bg-red-100 text-red-700 hover:bg-red-200"
+                }`}
+              >
+                {busyId === item.id
+                  ? "Saving..."
+                  : item.isAvailable
+                  ? "Available — Mark Booked"
+                  : "Booked — Mark Available"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminPanel() {
   const [pending, setPending] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [usersRefreshKey, setUsersRefreshKey] = useState(0);
 
   const load = () => {
     setLoading(true);
@@ -864,7 +1159,13 @@ function AdminPanel() {
     <div>
       <AdminStatsOverview />
 
+      <AdminCreateUser onCreated={() => setUsersRefreshKey((k) => k + 1)} />
+
+      <AdminAllUsers refreshKey={usersRefreshKey} />
+
       <PendingVerifications />
+
+      <AdminAllEquipment />
 
       <h2 className="text-xl font-bold mb-4">Pending Approvals ({pending.length})</h2>
       {loading ? (

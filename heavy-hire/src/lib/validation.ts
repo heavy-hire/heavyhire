@@ -56,3 +56,19 @@ export const uploadRequestSchema = z.object({
   contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
   purpose: z.enum(uploadPurposes).default("equipment"),
 });
+
+// Admin-only: creating an OWNER/CLIENT account directly. ADMIN is deliberately
+// excluded -- granting admin access always goes through a separate, more
+// careful path, never a quick "add user" form.
+export const adminCreateUserSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  email: z.string().trim().toLowerCase().email(),
+  password: z.string().min(8).max(100),
+  role: z.enum(["OWNER", "CLIENT"]),
+  phone: z.string().trim().max(30).optional(),
+});
+
+export const adminUserUpdateSchema = z.object({
+  verified: z.boolean().optional(),
+  active: z.boolean().optional(),
+});
