@@ -244,7 +244,79 @@ function VerificationWidget() {
   );
 }
 
-function BookingConditionAction({
+function CancelBookingAction({
+  booking,
+  onUpdated,
+}: {
+  booking: Booking;
+  onUpdated: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const cancel = async () => {
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", reason: reason || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to cancel booking");
+      setOpen(false);
+      setReason("");
+      onUpdated();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="text-sm font-semibold text-red-600"
+      >
+        Cancel booking
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <input
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Reason (optional)"
+        className="w-full border rounded px-3 py-2 text-sm"
+      />
+      <div className="flex gap-2">
+        <button
+          onClick={cancel}
+          disabled={submitting}
+          className="px-3 py-1 bg-red-600 text-white rounded text-sm font-semibold disabled:opacity-50"
+        >
+          {submitting ? "Cancelling..." : "Confirm cancellation"}
+        </button>
+        <button
+          onClick={() => setOpen(false)}
+          className="px-3 py-1 border border-gray-300 rounded text-sm font-semibold text-gray-700"
+        >
+          Never mind
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function OwnerBookingActions({
   booking,
   onUpdated,
 }: {
@@ -255,14 +327,30 @@ function BookingConditionAction({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const action = booking.status === "ACTIVE" ? "complete" : "pickup";
-  const label = booking.status === "ACTIVE" ? "Mark Returned" : "Mark Picked Up";
-
   if (!["PENDING", "CONFIRMED", "ACTIVE"].includes(booking.status)) {
     return null;
   }
 
-  const submit = async () => {
+  const confirm = async () => {
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "confirm" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to confirm booking");
+      onUpdated();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitPhotoAction = async (action: "pickup" | "complete") => {
     if (!file) return;
     setSubmitting(true);
     setError("");
@@ -285,26 +373,72 @@ function BookingConditionAction({
   };
 
   return (
-    <div className="mt-3 pt-3 border-t border-gray-100">
-      <p className="text-sm font-semibold text-gray-700 mb-2">
-        {label} — upload a condition photo
-      </p>
-      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
-      <div className="flex gap-2">
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
-          className="flex-1 text-sm"
-        />
-        <button
-          onClick={submit}
-          disabled={!file || submitting}
-          className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
-        >
-          {submitting ? "Saving..." : label}
-        </button>
-      </div>
+    <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      {booking.status === "PENDING" && (
+        <div className="flex items-center gap-4">
+          <button
+            onClick={confirm}
+            disabled={submitting}
+            className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+          >
+            {submitting ? "Confirming..." : "Confirm Booking"}
+          </button>
+          <CancelBookingAction booking={booking} onUpdated={onUpdated} />
+        </div>
+      )}
+
+      {(booking.status === "PENDING" || booking.status === "CONFIRMED") && (
+        <div>
+          <p className="text-sm font-semibold text-gray-700 mb-2">
+            Mark Picked Up — upload a condition photo
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="flex-1 text-sm"
+            />
+            <button
+              onClick={() => submitPhotoAction("pickup")}
+              disabled={!file || submitting}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+            >
+              {submitting ? "Saving..." : "Mark Picked Up"}
+            </button>
+          </div>
+          {booking.status === "CONFIRMED" && (
+            <div className="mt-2">
+              <CancelBookingAction booking={booking} onUpdated={onUpdated} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {booking.status === "ACTIVE" && (
+        <div>
+          <p className="text-sm font-semibold text-gray-700 mb-2">
+            Mark Returned — upload a condition photo
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="flex-1 text-sm"
+            />
+            <button
+              onClick={() => submitPhotoAction("complete")}
+              disabled={!file || submitting}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+            >
+              {submitting ? "Saving..." : "Mark Returned"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -313,12 +447,15 @@ function ClientBookings() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadData = () => {
+    setLoading(true);
     fetch("/api/bookings")
       .then((res) => res.json())
       .then(setBookings)
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(loadData, []);
 
   if (loading) return <p className="text-gray-500">Loading your bookings...</p>;
   if (bookings.length === 0) return <p className="text-gray-500">You haven't booked any equipment yet.</p>;
@@ -340,6 +477,11 @@ function ClientBookings() {
               <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">{b.status}</span>
             </div>
           </div>
+          {(b.status === "PENDING" || b.status === "CONFIRMED") && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <CancelBookingAction booking={b} onUpdated={loadData} />
+            </div>
+          )}
           <MessageThread bookingId={b.id} />
         </div>
       ))}
@@ -627,7 +769,7 @@ function OwnerPanel() {
                   </div>
                 </div>
                 <MessageThread bookingId={b.id} />
-                <BookingConditionAction booking={b} onUpdated={loadData} />
+                <OwnerBookingActions booking={b} onUpdated={loadData} />
               </div>
             ))}
           </div>
