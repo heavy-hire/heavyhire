@@ -195,9 +195,16 @@ function ClientBookings() {
   );
 }
 
+interface SubscriptionInfo {
+  subscriptionTier: string;
+  listingCount: number;
+  listingLimit: number | null;
+}
+
 function OwnerPanel() {
   const [listings, setListings] = useState<EquipmentListing[]>([]);
   const [incoming, setIncoming] = useState<Booking[]>([]);
+  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -219,15 +226,23 @@ function OwnerPanel() {
     Promise.all([
       fetch("/api/equipment?owner=me").then((r) => r.json()),
       fetch("/api/bookings?as=owner").then((r) => r.json()),
+      fetch("/api/owner/profile").then((r) => r.json()),
     ])
-      .then(([eq, bk]) => {
+      .then(([eq, bk, sub]) => {
         setListings(eq);
         setIncoming(bk);
+        setSubscription(sub);
       })
       .finally(() => setLoading(false));
   };
 
   useEffect(loadData, []);
+
+  const atLimit = Boolean(
+    subscription?.listingLimit !== null &&
+      subscription &&
+      subscription.listingCount >= (subscription.listingLimit as number)
+  );
 
   const submitListing = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -274,15 +289,24 @@ function OwnerPanel() {
   return (
     <div className="space-y-8">
       <div>
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-1">
           <h2 className="text-xl font-bold">Your Equipment ({listings.length})</h2>
           <button
             onClick={() => setShowForm((s) => !s)}
-            className="px-4 py-2 bg-primary-600 text-white rounded-lg font-semibold"
+            disabled={!showForm && atLimit}
+            className="px-4 py-2 bg-primary-600 text-white rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {showForm ? "Cancel" : "+ Add Equipment"}
           </button>
         </div>
+
+        {subscription && (
+          <p className="text-sm text-gray-500 mb-4">
+            {subscription.subscriptionTier} plan · {subscription.listingCount}
+            {subscription.listingLimit !== null ? ` / ${subscription.listingLimit}` : ""} listings used
+            {atLimit && " — upgrade your plan to add more"}
+          </p>
+        )}
 
         {showForm && (
           <form onSubmit={submitListing} className="bg-white rounded-lg shadow p-4 mb-4 space-y-3">
