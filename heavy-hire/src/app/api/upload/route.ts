@@ -18,10 +18,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    if (user.role !== "OWNER" && user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
     const body = await request.json();
     const parsed = uploadRequestSchema.safeParse(body);
 
@@ -32,8 +28,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const ext = EXTENSIONS[parsed.data.contentType];
-    const key = `equipment/${user.id}/${randomUUID()}.${ext}`;
+    const { purpose, contentType } = parsed.data;
+
+    // Equipment photos: owners/admins only (tied to listing creation).
+    // Booking pickup/return photos: owners only (only they transition booking status).
+    // Verification (ID) documents: any authenticated user.
+    if (purpose === "equipment" && user.role !== "OWNER" && user.role !== "ADMIN") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (purpose === "booking-photo" && user.role !== "OWNER") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const folder =
+      purpose === "verification"
+        ? "verification"
+        : purpose === "booking-photo"
+        ? "bookings"
+        : "equipment";
+
+    const ext = EXTENSIONS[contentType];
+    const key = `${folder}/${user.id}/${randomUUID()}.${ext}`;
 
     const { uploadUrl, publicUrl } = await createPresignedUploadUrl({
       key,

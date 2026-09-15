@@ -69,6 +69,7 @@ model User {
   phone         String?
   avatar        String?
   isVerified    Boolean  @default(false)
+  idDocumentUrl String?
   isActive      Boolean  @default(true)
   language      String   @default("en")
   createdAt     DateTime @default(now())
@@ -159,6 +160,9 @@ model Booking {
   status           BookingStatus @default(PENDING)
   notes            String?
   deliveryAddress  String?
+  waiverAcceptedAt DateTime?
+  pickupPhotos     String[]      @default([])
+  returnPhotos     String[]      @default([])
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 

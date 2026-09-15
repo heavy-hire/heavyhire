@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
       notes,
       deliveryAddress,
       paymentMethod,
+      waiverAccepted,
     } = body;
 
     const allowedPaymentMethods = ["MOBILE_MONEY", "CARD", "BANK_TRANSFER"];
@@ -31,6 +32,13 @@ export async function POST(request: NextRequest) {
     if (!equipmentId || !startDate || !endDate) {
       return NextResponse.json(
         { error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
+    if (waiverAccepted !== true) {
+      return NextResponse.json(
+        { error: "You must accept the liability waiver to book" },
         { status: 400 }
       );
     }
@@ -106,6 +114,7 @@ export async function POST(request: NextRequest) {
           totalPrice,
           notes: notes || null,
           deliveryAddress: deliveryAddress || null,
+          waiverAcceptedAt: new Date(),
           payment: {
             create: {
               amount: totalPrice,

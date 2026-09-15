@@ -40,7 +40,19 @@ export const messageCreateSchema = z.object({
   content: z.string().trim().min(1).max(2000),
 });
 
+export const bookingTransitionSchema = z.object({
+  action: z.enum(["pickup", "complete"]),
+  photos: z.array(z.string().url()).min(1).max(10),
+});
+
+export const verificationSubmitSchema = z.object({
+  idDocumentUrl: z.string().url(),
+});
+
+export const uploadPurposes = ["equipment", "verification", "booking-photo"] as const;
+
 export const uploadRequestSchema = z.object({
   filename: z.string().min(1).max(255),
   contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  purpose: z.enum(uploadPurposes).default("equipment"),
 });

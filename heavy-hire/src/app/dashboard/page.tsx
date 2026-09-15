@@ -27,11 +27,13 @@ interface EquipmentListing {
 
 const categories = ["CONSTRUCTION", "AGRICULTURAL", "HEAVY_TRANSPORT", "REFRIGERATED"];
 
-async function uploadImage(file: File): Promise<string> {
+type UploadPurpose = "equipment" | "verification" | "booking-photo";
+
+async function uploadImage(file: File, purpose: UploadPurpose = "equipment"): Promise<string> {
   const res = await fetch("/api/upload", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ filename: file.name, contentType: file.type }),
+    body: JSON.stringify({ filename: file.name, contentType: file.type, purpose }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Failed to prepare upload");
@@ -153,6 +155,155 @@ function MessageThread({ bookingId }: { bookingId: string }) {
           </form>
         </div>
       )}
+    </div>
+  );
+}
+
+function VerificationWidget() {
+  const [status, setStatus] = useState<"loading" | "not_submitted" | "pending" | "verified">("loading");
+  const [file, setFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = () => {
+    fetch("/api/verification")
+      .then((r) => r.json())
+      .then((d) => setStatus(d.status))
+      .catch(() => setStatus("not_submitted"));
+  };
+
+  useEffect(load, []);
+
+  const submit = async () => {
+    if (!file) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const idDocumentUrl = await uploadImage(file, "verification");
+      const res = await fetch("/api/verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idDocumentUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to submit");
+      setFile(null);
+      load();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (status === "loading") return null;
+
+  if (status === "verified") {
+    return (
+      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-8 flex items-center gap-2">
+        <span className="text-green-700 font-semibold">✓ Identity verified</span>
+      </div>
+    );
+  }
+
+  if (status === "pending") {
+    return (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-8">
+        <p className="text-yellow-800 font-semibold">ID submitted — pending review</p>
+        <p className="text-sm text-yellow-700 mt-1">
+          An admin will review your document shortly.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow p-4 mb-8">
+      <p className="font-semibold mb-1">Verify your identity</p>
+      <p className="text-sm text-gray-600 mb-3">
+        Upload a photo of your national ID or driver's license to get a verified badge.
+      </p>
+      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+      <div className="flex gap-2">
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={(e) => setFile(e.target.files?.[0] || null)}
+          className="flex-1 text-sm"
+        />
+        <button
+          onClick={submit}
+          disabled={!file || submitting}
+          className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+        >
+          {submitting ? "Submitting..." : "Submit"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BookingConditionAction({
+  booking,
+  onUpdated,
+}: {
+  booking: Booking;
+  onUpdated: () => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const action = booking.status === "ACTIVE" ? "complete" : "pickup";
+  const label = booking.status === "ACTIVE" ? "Mark Returned" : "Mark Picked Up";
+
+  if (!["PENDING", "CONFIRMED", "ACTIVE"].includes(booking.status)) {
+    return null;
+  }
+
+  const submit = async () => {
+    if (!file) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const photoUrl = await uploadImage(file, "booking-photo");
+      const res = await fetch(`/api/bookings/${booking.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, photos: [photoUrl] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update booking");
+      setFile(null);
+      onUpdated();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100">
+      <p className="text-sm font-semibold text-gray-700 mb-2">
+        {label} — upload a condition photo
+      </p>
+      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+      <div className="flex gap-2">
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={(e) => setFile(e.target.files?.[0] || null)}
+          className="flex-1 text-sm"
+        />
+        <button
+          onClick={submit}
+          disabled={!file || submitting}
+          className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+        >
+          {submitting ? "Saving..." : label}
+        </button>
+      </div>
     </div>
   );
 }
@@ -443,6 +594,7 @@ function OwnerPanel() {
                   </div>
                 </div>
                 <MessageThread bookingId={b.id} />
+                <BookingConditionAction booking={b} onUpdated={loadData} />
               </div>
             ))}
           </div>
@@ -589,6 +741,91 @@ function AdminStatsOverview() {
   );
 }
 
+interface PendingVerificationUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  idDocumentUrl: string;
+}
+
+function PendingVerifications() {
+  const [users, setUsers] = useState<PendingVerificationUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    fetch("/api/admin/users?pending=true")
+      .then((r) => r.json())
+      .then(setUsers)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, []);
+
+  const decide = async (id: string, verified: boolean) => {
+    setBusyId(id);
+    try {
+      await fetch(`/api/admin/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verified }),
+      });
+      load();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="mb-10">
+      <h2 className="text-xl font-bold mb-4">Pending ID Verifications ({users.length})</h2>
+      {loading ? (
+        <p className="text-gray-500">Loading...</p>
+      ) : users.length === 0 ? (
+        <p className="text-gray-500">No IDs awaiting review.</p>
+      ) : (
+        <div className="space-y-3">
+          {users.map((u) => (
+            <div key={u.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <a href={u.idDocumentUrl} target="_blank" rel="noopener noreferrer">
+                  <img
+                    src={u.idDocumentUrl}
+                    alt="ID document"
+                    className="w-16 h-16 rounded-lg object-cover border border-gray-200"
+                  />
+                </a>
+                <div>
+                  <p className="font-semibold">{u.name}</p>
+                  <p className="text-sm text-gray-600">{u.email} · {u.role}</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  disabled={busyId === u.id}
+                  onClick={() => decide(u.id, true)}
+                  className="px-3 py-1 bg-green-600 text-white rounded font-semibold disabled:opacity-50"
+                >
+                  Approve
+                </button>
+                <button
+                  disabled={busyId === u.id}
+                  onClick={() => decide(u.id, false)}
+                  className="px-3 py-1 bg-red-600 text-white rounded font-semibold disabled:opacity-50"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminPanel() {
   const [pending, setPending] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -625,6 +862,8 @@ function AdminPanel() {
   return (
     <div>
       <AdminStatsOverview />
+
+      <PendingVerifications />
 
       <h2 className="text-xl font-bold mb-4">Pending Approvals ({pending.length})</h2>
       {loading ? (
@@ -707,6 +946,8 @@ export default function DashboardPage() {
         <h1 className="text-3xl font-bold text-gray-900 mb-6">
           {role === "OWNER" ? "Owner Dashboard" : role === "ADMIN" ? "Admin Dashboard" : "My Bookings"}
         </h1>
+
+        {(role === "OWNER" || role === "CLIENT") && <VerificationWidget />}
 
         {role === "OWNER" && <OwnerPanel />}
         {role === "ADMIN" && <AdminPanel />}
