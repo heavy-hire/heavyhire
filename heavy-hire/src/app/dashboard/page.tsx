@@ -22,9 +22,140 @@ interface EquipmentListing {
   pricePerDay: number;
   isApproved: boolean;
   isAvailable: boolean;
+  images: string[];
 }
 
 const categories = ["CONSTRUCTION", "AGRICULTURAL", "HEAVY_TRANSPORT", "REFRIGERATED"];
+
+async function uploadImage(file: File): Promise<string> {
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename: file.name, contentType: file.type }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Failed to prepare upload");
+
+  const putRes = await fetch(data.uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": file.type },
+    body: file,
+  });
+  if (!putRes.ok) throw new Error("Failed to upload image");
+
+  return data.publicUrl;
+}
+
+interface Message {
+  id: string;
+  content: string;
+  createdAt: string;
+  sender: { id: string; name: string };
+}
+
+function MessageThread({ bookingId }: { bookingId: string }) {
+  const { data: session } = useSession();
+  const myId = (session?.user as any)?.id as string | undefined;
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [content, setContent] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = () => {
+    setLoading(true);
+    fetch(`/api/bookings/${bookingId}/messages`)
+      .then((r) => r.json())
+      .then(setMessages)
+      .finally(() => setLoading(false));
+  };
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && messages.length === 0) load();
+  };
+
+  const send = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!content.trim()) return;
+    setSending(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send message");
+      setMessages((prev) => [...prev, data]);
+      setContent("");
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100">
+      <button
+        onClick={toggle}
+        className="text-sm font-semibold text-primary-600"
+      >
+        {open ? "Hide messages" : "Messages"}
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-3">
+          {loading ? (
+            <p className="text-sm text-gray-500">Loading messages...</p>
+          ) : messages.length === 0 ? (
+            <p className="text-sm text-gray-500">No messages yet. Say hello.</p>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                    m.sender.id === myId
+                      ? "ml-auto bg-primary-600 text-white"
+                      : "bg-gray-100 text-gray-800"
+                  }`}
+                >
+                  {m.sender.id !== myId && (
+                    <p className="text-xs font-semibold mb-0.5 opacity-70">{m.sender.name}</p>
+                  )}
+                  <p>{m.content}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
+
+          <form onSubmit={send} className="flex gap-2">
+            <input
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Write a message..."
+              className="flex-1 border rounded-lg px-3 py-2 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={sending}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+            >
+              Send
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ClientBookings() {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -43,18 +174,21 @@ function ClientBookings() {
   return (
     <div className="space-y-4">
       {bookings.map((b) => (
-        <div key={b.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center">
-          <div>
-            <p className="font-semibold">{b.equipment.title}</p>
-            <p className="text-sm text-gray-600">
-              {new Date(b.startDate).toLocaleDateString()} — {new Date(b.endDate).toLocaleDateString()} ({b.totalDays} days)
-            </p>
-            <p className="text-sm text-gray-600">Owner: {b.equipment.owner.name}</p>
+        <div key={b.id} className="bg-white rounded-lg shadow p-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="font-semibold">{b.equipment.title}</p>
+              <p className="text-sm text-gray-600">
+                {new Date(b.startDate).toLocaleDateString()} — {new Date(b.endDate).toLocaleDateString()} ({b.totalDays} days)
+              </p>
+              <p className="text-sm text-gray-600">Owner: {b.equipment.owner.name}</p>
+            </div>
+            <div className="text-right">
+              <p className="font-bold text-primary-600">{b.totalPrice.toLocaleString()} RWF</p>
+              <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">{b.status}</span>
+            </div>
           </div>
-          <div className="text-right">
-            <p className="font-bold text-primary-600">{b.totalPrice.toLocaleString()} RWF</p>
-            <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">{b.status}</span>
-          </div>
+          <MessageThread bookingId={b.id} />
         </div>
       ))}
     </div>
@@ -76,6 +210,9 @@ function OwnerPanel() {
     location: "",
     city: "",
   });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
+  const [uploading, setUploading] = useState(false);
 
   const loadData = () => {
     setLoading(true);
@@ -97,12 +234,23 @@ function OwnerPanel() {
     setFormError("");
     setSaving(true);
     try {
+      let images: string[] = [];
+      if (imageFile) {
+        setUploading(true);
+        try {
+          images = [await uploadImage(imageFile)];
+        } finally {
+          setUploading(false);
+        }
+      }
+
       const res = await fetch("/api/equipment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
           pricePerDay: Number(form.pricePerDay),
+          images,
         }),
       });
       if (!res.ok) {
@@ -110,6 +258,8 @@ function OwnerPanel() {
         throw new Error(data.error || "Failed to create listing");
       }
       setForm({ title: "", category: categories[0], description: "", pricePerDay: "", location: "", city: "" });
+      setImageFile(null);
+      setImagePreview("");
       setShowForm(false);
       loadData();
     } catch (err: any) {
@@ -183,12 +333,34 @@ function OwnerPanel() {
               value={form.city}
               onChange={(e) => setForm({ ...form, city: e.target.value })}
             />
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Photo (optional)
+              </label>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setImageFile(file);
+                  setImagePreview(file ? URL.createObjectURL(file) : "");
+                }}
+                className="w-full text-sm"
+              />
+              {imagePreview && (
+                <img
+                  src={imagePreview}
+                  alt="Preview"
+                  className="mt-2 h-32 w-full object-cover rounded-lg"
+                />
+              )}
+            </div>
             <button
               type="submit"
               disabled={saving}
               className="w-full py-2 bg-primary-600 text-white rounded-lg font-semibold disabled:opacity-50"
             >
-              {saving ? "Saving..." : "Submit for approval"}
+              {saving ? (uploading ? "Uploading photo..." : "Saving...") : "Submit for approval"}
             </button>
           </form>
         )}
@@ -199,9 +371,22 @@ function OwnerPanel() {
           <div className="space-y-3">
             {listings.map((item) => (
               <div key={item.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center">
-                <div>
-                  <p className="font-semibold">{item.title}</p>
-                  <p className="text-sm text-gray-600">{item.category.replace("_", " ")} — {item.pricePerDay.toLocaleString()} RWF/day</p>
+                <div className="flex items-center gap-3">
+                  {item.images?.[0] ? (
+                    <img
+                      src={item.images[0]}
+                      alt={item.title}
+                      className="w-14 h-14 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center text-xl">
+                      🏗️
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-semibold">{item.title}</p>
+                    <p className="text-sm text-gray-600">{item.category.replace("_", " ")} — {item.pricePerDay.toLocaleString()} RWF/day</p>
+                  </div>
                 </div>
                 <span className={`text-xs px-2 py-1 rounded ${item.isApproved ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
                   {item.isApproved ? "Approved" : "Pending approval"}
@@ -219,18 +404,21 @@ function OwnerPanel() {
         ) : (
           <div className="space-y-3">
             {incoming.map((b) => (
-              <div key={b.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center">
-                <div>
-                  <p className="font-semibold">{b.equipment.title}</p>
-                  <p className="text-sm text-gray-600">Client: {b.client?.name} ({b.client?.phone || b.client?.email})</p>
-                  <p className="text-sm text-gray-600">
-                    {new Date(b.startDate).toLocaleDateString()} — {new Date(b.endDate).toLocaleDateString()}
-                  </p>
+              <div key={b.id} className="bg-white rounded-lg shadow p-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="font-semibold">{b.equipment.title}</p>
+                    <p className="text-sm text-gray-600">Client: {b.client?.name} ({b.client?.phone || b.client?.email})</p>
+                    <p className="text-sm text-gray-600">
+                      {new Date(b.startDate).toLocaleDateString()} — {new Date(b.endDate).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-primary-600">{b.totalPrice.toLocaleString()} RWF</p>
+                    <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">{b.status}</span>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold text-primary-600">{b.totalPrice.toLocaleString()} RWF</p>
-                  <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">{b.status}</span>
-                </div>
+                <MessageThread bookingId={b.id} />
               </div>
             ))}
           </div>

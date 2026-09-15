@@ -35,3 +35,12 @@ export const equipmentAdminUpdateSchema = z.object({
   isApproved: z.boolean().optional(),
   isFeatured: z.boolean().optional(),
 });
+
+export const messageCreateSchema = z.object({
+  content: z.string().trim().min(1).max(2000),
+});
+
+export const uploadRequestSchema = z.object({
+  filename: z.string().min(1).max(255),
+  contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+});
