@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { SiteNav } from "@/components/SiteNav";
 
 interface Equipment {
   id: string;
@@ -51,20 +52,7 @@ export default function EquipmentPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation */}
-      <nav className="sticky top-0 z-40 bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <Link href="/">
-            <span className="font-bold text-xl text-gray-900">HeavyHire</span>
-          </Link>
-          <Link
-            href="/auth/login"
-            className="px-4 py-2 bg-primary-600 text-white rounded-lg"
-          >
-            Sign In
-          </Link>
-        </div>
-      </nav>
+      <SiteNav />
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
