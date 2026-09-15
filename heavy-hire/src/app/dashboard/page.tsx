@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 interface Booking {
   id: string;
@@ -926,8 +927,14 @@ export default function DashboardPage() {
       <nav className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex justify-between items-center">
-            <span className="font-bold text-xl">HeavyHire Dashboard</span>
+            <Link href="/" className="font-bold text-xl">HeavyHire Dashboard</Link>
             <div className="flex items-center gap-4">
+              <Link
+                href="/equipment"
+                className="text-sm text-primary-600 font-semibold hover:text-primary-700"
+              >
+                Browse Equipment
+              </Link>
               <span className="text-sm text-gray-600">
                 {session!.user?.name} · {role}
               </span>
