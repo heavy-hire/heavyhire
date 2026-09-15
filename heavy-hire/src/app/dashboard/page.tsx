@@ -240,6 +240,143 @@ function OwnerPanel() {
   );
 }
 
+interface AdminStats {
+  users: { total: number; clients: number; owners: number; admins: number };
+  equipment: { total: number; pendingApproval: number; byCategory: Record<string, number> };
+  bookings: { total: number; byStatus: Record<string, number> };
+  revenue: { gmv: number; commission: number };
+  openDisputes: number;
+  recentBookings: {
+    id: string;
+    equipmentTitle: string;
+    clientName: string;
+    totalPrice: number;
+    status: string;
+    createdAt: string;
+  }[];
+}
+
+function StatCard({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <div className="bg-white rounded-lg shadow p-4">
+      <p className="text-sm text-gray-600">{label}</p>
+      <p className={`text-2xl font-bold ${accent || "text-gray-900"}`}>{value}</p>
+    </div>
+  );
+}
+
+function AdminStatsOverview() {
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/admin/stats")
+      .then(async (r) => {
+        if (!r.ok) throw new Error((await r.json()).error || "Failed to load stats");
+        return r.json();
+      })
+      .then(setStats)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <p className="text-gray-500">Loading platform stats...</p>;
+  if (error) return <p className="text-red-600">{error}</p>;
+  if (!stats) return null;
+
+  const statusOrder = ["PENDING", "CONFIRMED", "ACTIVE", "COMPLETED", "CANCELLED", "DISPUTED"];
+  const categoryOrder = ["CONSTRUCTION", "AGRICULTURAL", "HEAVY_TRANSPORT", "REFRIGERATED"];
+
+  return (
+    <div className="space-y-8 mb-10">
+      <div>
+        <h2 className="text-xl font-bold mb-4">Platform Overview</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <StatCard label="Total Users" value={stats.users.total.toLocaleString()} />
+          <StatCard label="Owners" value={stats.users.owners.toLocaleString()} />
+          <StatCard label="Clients" value={stats.users.clients.toLocaleString()} />
+          <StatCard label="Equipment Listed" value={stats.equipment.total.toLocaleString()} />
+          <StatCard
+            label="Gross Bookings Value"
+            value={`${stats.revenue.gmv.toLocaleString()} RWF`}
+            accent="text-primary-600"
+          />
+          <StatCard
+            label="Platform Commission"
+            value={`${stats.revenue.commission.toLocaleString()} RWF`}
+            accent="text-primary-600"
+          />
+          <StatCard
+            label="Pending Approvals"
+            value={stats.equipment.pendingApproval.toLocaleString()}
+            accent={stats.equipment.pendingApproval > 0 ? "text-yellow-600" : undefined}
+          />
+          <StatCard
+            label="Open Disputes"
+            value={stats.openDisputes.toLocaleString()}
+            accent={stats.openDisputes > 0 ? "text-red-600" : undefined}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <h3 className="text-lg font-bold mb-3">Bookings by Status</h3>
+          <div className="bg-white rounded-lg shadow p-4 space-y-2">
+            {statusOrder.map((s) => (
+              <div key={s} className="flex justify-between text-sm">
+                <span className="text-gray-600">{s}</span>
+                <span className="font-semibold">{stats.bookings.byStatus[s] ?? 0}</span>
+              </div>
+            ))}
+            <div className="flex justify-between text-sm border-t border-gray-200 pt-2 mt-2">
+              <span className="font-semibold text-gray-900">Total</span>
+              <span className="font-bold">{stats.bookings.total}</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-lg font-bold mb-3">Equipment by Category</h3>
+          <div className="bg-white rounded-lg shadow p-4 space-y-2">
+            {categoryOrder.map((c) => (
+              <div key={c} className="flex justify-between text-sm">
+                <span className="text-gray-600">{c.replace("_", " ")}</span>
+                <span className="font-semibold">{stats.equipment.byCategory[c] ?? 0}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-lg font-bold mb-3">Recent Bookings</h3>
+        {stats.recentBookings.length === 0 ? (
+          <p className="text-gray-500">No bookings yet.</p>
+        ) : (
+          <div className="bg-white rounded-lg shadow divide-y divide-gray-100">
+            {stats.recentBookings.map((b) => (
+              <div key={b.id} className="p-4 flex justify-between items-center">
+                <div>
+                  <p className="font-semibold">{b.equipmentTitle}</p>
+                  <p className="text-sm text-gray-600">
+                    {b.clientName} · {new Date(b.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-primary-600">{b.totalPrice.toLocaleString()} RWF</p>
+                  <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">{b.status}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AdminPanel() {
   const [pending, setPending] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -273,37 +410,45 @@ function AdminPanel() {
     }
   };
 
-  if (loading) return <p className="text-gray-500">Loading pending listings...</p>;
-  if (pending.length === 0) return <p className="text-gray-500">No listings awaiting approval.</p>;
-
   return (
-    <div className="space-y-3">
-      {pending.map((item) => (
-        <div key={item.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center">
-          <div>
-            <p className="font-semibold">{item.title}</p>
-            <p className="text-sm text-gray-600">
-              {item.category.replace("_", " ")} — {item.pricePerDay.toLocaleString()} RWF/day — by {item.owner.name}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              disabled={busyId === item.id}
-              onClick={() => decide(item.id, true)}
-              className="px-3 py-1 bg-green-600 text-white rounded font-semibold disabled:opacity-50"
-            >
-              Approve
-            </button>
-            <button
-              disabled={busyId === item.id}
-              onClick={() => decide(item.id, false)}
-              className="px-3 py-1 bg-red-600 text-white rounded font-semibold disabled:opacity-50"
-            >
-              Reject
-            </button>
-          </div>
+    <div>
+      <AdminStatsOverview />
+
+      <h2 className="text-xl font-bold mb-4">Pending Approvals ({pending.length})</h2>
+      {loading ? (
+        <p className="text-gray-500">Loading pending listings...</p>
+      ) : pending.length === 0 ? (
+        <p className="text-gray-500">No listings awaiting approval.</p>
+      ) : (
+        <div className="space-y-3">
+          {pending.map((item) => (
+            <div key={item.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center">
+              <div>
+                <p className="font-semibold">{item.title}</p>
+                <p className="text-sm text-gray-600">
+                  {item.category.replace("_", " ")} — {item.pricePerDay.toLocaleString()} RWF/day — by {item.owner.name}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  disabled={busyId === item.id}
+                  onClick={() => decide(item.id, true)}
+                  className="px-3 py-1 bg-green-600 text-white rounded font-semibold disabled:opacity-50"
+                >
+                  Approve
+                </button>
+                <button
+                  disabled={busyId === item.id}
+                  onClick={() => decide(item.id, false)}
+                  className="px-3 py-1 bg-red-600 text-white rounded font-semibold disabled:opacity-50"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
