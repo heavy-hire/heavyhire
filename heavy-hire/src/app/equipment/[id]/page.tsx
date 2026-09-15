@@ -30,14 +30,29 @@ interface EquipmentDetail {
   };
 }
 
+// Date-only helpers that stay in the browser's local calendar day throughout.
+// Using toISOString() (UTC) here would shift the date backward by a day for
+// any positive UTC offset -- including Rwanda (UTC+2), this app's own market.
+function formatLocalDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function parseLocalDate(dateISO: string): Date {
+  const [y, m, d] = dateISO.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return formatLocalDate(new Date());
 }
 
 function addDaysISO(dateISO: string, days: number) {
-  const d = new Date(dateISO);
+  const d = parseLocalDate(dateISO);
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return formatLocalDate(d);
 }
 
 function startOfDay(d: Date) {
@@ -55,8 +70,8 @@ export default function EquipmentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [bookedRanges, setBookedRanges] = useState<{ from: Date; to: Date }[]>([]);
   const [range, setRange] = useState<DateRange | undefined>({
-    from: new Date(todayISO()),
-    to: new Date(addDaysISO(todayISO(), 1)),
+    from: parseLocalDate(todayISO()),
+    to: parseLocalDate(addDaysISO(todayISO(), 1)),
   });
   const [booking, setBooking] = useState(false);
   const [bookingError, setBookingError] = useState("");
@@ -150,8 +165,8 @@ export default function EquipmentDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           equipmentId: equipment.id,
-          startDate: range.from.toISOString().slice(0, 10),
-          endDate: range.to.toISOString().slice(0, 10),
+          startDate: formatLocalDate(range.from),
+          endDate: formatLocalDate(range.to),
         }),
       });
 
@@ -296,7 +311,7 @@ export default function EquipmentDetailPage() {
                     mode="range"
                     selected={range}
                     onSelect={setRange}
-                    disabled={[{ before: new Date(todayISO()) }, ...bookedRanges]}
+                    disabled={[{ before: parseLocalDate(todayISO()) }, ...bookedRanges]}
                     numberOfMonths={1}
                   />
                 </div>
